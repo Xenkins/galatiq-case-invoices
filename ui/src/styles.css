@@ -1,0 +1,129 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+  background: #0f1115;
+  color: #e6eaf2;
+}
+
+body {
+  margin: 0;
+  background: #0f1115;
+}
+
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 1.2rem;
+}
+
+header h1 {
+  margin: 0 0 0.2rem;
+}
+
+header p {
+  margin-top: 0;
+  color: #a7b2c4;
+}
+
+.card {
+  background: #171b22;
+  border: 1px solid #242c38;
+  border-radius: 10px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.row {
+  display: flex;
+  gap: 0.6rem;
+  align-items: center;
+}
+
+.row.spread {
+  justify-content: space-between;
+}
+
+select,
+button {
+  border-radius: 8px;
+  border: 1px solid #30394a;
+  background: #10151d;
+  color: #e6eaf2;
+  padding: 0.45rem 0.6rem;
+}
+
+select {
+  min-width: 420px;
+}
+
+button {
+  cursor: pointer;
+  background: #2362ff;
+  border-color: #2362ff;
+}
+
+button:disabled {
+  opacity: 0.7;
+  cursor: default;
+}
+
+.pill {
+  border-radius: 999px;
+  padding: 0.2rem 0.6rem;
+  font-size: 0.8rem;
+}
+
+.pill-run {
+  background: #254166;
+  color: #9cc7ff;
+}
+
+.pill-ok {
+  background: #1f5138;
+  color: #90f6be;
+}
+
+.pill-err {
+  background: #622735;
+  color: #ffadc0;
+}
+
+.summary {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.4rem;
+}
+
+.muted {
+  color: #9aa7bd;
+}
+
+.error {
+  color: #ff98ad;
+}
+
+.timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.timeline li {
+  border: 1px solid #2a3444;
+  border-radius: 8px;
+  padding: 0.6rem;
+  background: #111722;
+}
+
+.stage {
+  font-weight: 600;
+}
+
+.stamp {
+  color: #95a3b9;
+  font-size: 0.8rem;
+  margin-bottom: 0.3rem;
+}
