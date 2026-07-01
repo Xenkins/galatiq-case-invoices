@@ -90,18 +90,15 @@ All stages share `PipelineState` and append to `audit_log` for full run traceabi
 
 ```mermaid
 flowchart LR
-    A[Invoice Input<br/>txt/json/csv/xml/pdf] --> B[Ingestion Agent<br/>Parser + Grok extraction]
-    B -->|pass| D[Validation Agent<br/>SQLite checks + fuzzy matching + totals/date rules]
+    A[Invoice Input] --> B[Ingestion Agent]
+    B -->|pass| D[Validation Agent]
     B -.->|reflection retry once| B
-    D -->|pass| F[Approval Agent<br/>deterministic policy + Grok rationale]
+    D -->|pass| F[Approval Agent]
     D -.->|reflection retry once| D
-    F -->|pass| H{Decision}
+    F -->|pass| H[Decision + Payment Gate<br/>APPROVE => execute payment<br/>Else => skip payment]
     F -.->|reflection retry once| F
-    H -->|APPROVE| I[Payment Agent<br/>mock payment execution]
-    H -->|HUMAN_REVIEW / REJECT| J[Payment Skipped]
-    I --> K[Supervisor Agent<br/>final consistency + status]
-    J --> K
-    K --> L[Outputs<br/>audit log + issues + flags + final status]
+    H --> K[Supervisor Agent]
+    K --> L[Outputs]
 ```
 
 ## Deterministic-First Decisioning (LLM-Assisted, Not LLM-Only)
@@ -225,21 +222,12 @@ Coverage includes integration flow behavior and key validation edge cases (date 
 
 ## Improvements and Expansion Path
 
-### Improve Current Functionality
-
 - **Adaptive fuzzy matching thresholds:** tune thresholds by vendor/item family and add confidence calibration from historical reviewer outcomes.
 - **Learning from human overrides:** persist manual-review decisions and use them to improve future auto-mapping and policy tuning.
 - **Richer validation coverage:** add unit price tolerance checks, duplicate invoice detection, vendor allowlists/blocklists, and tax/subtotal integrity checks.
 - **Stronger document resilience:** improve OCR handling and table extraction for low-quality PDFs, including confidence scoring per extracted field.
 - **Explainability quality:** provide field-level evidence links (which lines in source led to each issue/flag) in both API responses and UI.
-
-### Evolve Into a Shippable Product
-
-- **Identity, roles, and approval workflow:** add authn/authz, reviewer queues, SLA tracking, and role-based manual override permissions.
-- **Persistent system of record:** move run state/audit logs from in-memory runtime state to durable storage with replayable run history.
-- **Operational reliability:** add retry/backoff policies, job queueing, idempotency keys, and dead-letter handling for failed runs.
-- **Observability and governance:** add structured metrics, tracing, alerting, model cost tracking, and policy-change audit trails.
-- **Deployment hardening:** containerization, CI/CD gates, secret management, environment promotion (dev/stage/prod), and backup/restore procedures.
+- **Persistent run memory/record:** move run state and audit logs from in-memory runtime state to durable storage with replayable history.
 
 ## Final Summary
 
