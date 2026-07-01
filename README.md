@@ -159,7 +159,7 @@ Reflection stages:
 
 Each stage can request at most one retry, improving quality without unbounded loops.
 
-## Decision Buckets and Plain-English Flag Meanings
+## Decision Buckets
 
 UI policy guide lives in `ui/src/App.jsx`.
 
