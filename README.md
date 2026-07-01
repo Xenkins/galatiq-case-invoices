@@ -89,17 +89,14 @@ All stages share `PipelineState` and append to `audit_log` for full run traceabi
 ## Process Flow Diagram
 
 ```mermaid
-flowchart TD
+flowchart LR
     A[Invoice Input<br/>txt/json/csv/xml/pdf] --> B[Ingestion Agent<br/>Parser + Grok extraction]
-    B --> C{Ingestion Reflection<br/>pass?}
-    C -->|retry once| B
-    C -->|pass| D[Validation Agent<br/>SQLite checks + fuzzy matching + totals/date rules]
-    D --> E{Validation Reflection<br/>pass?}
-    E -->|retry once| D
-    E -->|pass| F[Approval Agent<br/>deterministic policy + Grok rationale]
-    F --> G{Approval Reflection<br/>pass?}
-    G -->|retry once| F
-    G -->|pass| H{Decision}
+    B -->|pass| D[Validation Agent<br/>SQLite checks + fuzzy matching + totals/date rules]
+    B -.->|reflection retry once| B
+    D -->|pass| F[Approval Agent<br/>deterministic policy + Grok rationale]
+    D -.->|reflection retry once| D
+    F -->|pass| H{Decision}
+    F -.->|reflection retry once| F
     H -->|APPROVE| I[Payment Agent<br/>mock payment execution]
     H -->|HUMAN_REVIEW / REJECT| J[Payment Skipped]
     I --> K[Supervisor Agent<br/>final consistency + status]
