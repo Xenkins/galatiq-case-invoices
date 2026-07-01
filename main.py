@@ -12,6 +12,18 @@ try:
 except Exception:  # pragma: no cover - fallback when dependency not installed
     load_dotenv = None
 
+POLICY_FLAG_EXPLANATIONS = {
+    "critical_issue_present": "A critical integrity/risk issue was found, so auto-processing stops.",
+    "error_issue_present": "An error-level validation issue requires manual reviewer confirmation.",
+    "validation_not_passed": "Validation did not fully pass, so auto-approval is blocked.",
+    "uncertainty_requires_review": "Signals are ambiguous enough that a human must verify before payment.",
+    "vp_threshold_exceeded": "Invoice amount exceeds escalation threshold and needs higher-level review.",
+    "payment_pressure_language_detected": "Invoice language suggests urgency pressure (potential social-engineering risk).",
+    "nonstandard_payment_instruction": "Payment instructions look non-standard (e.g., wire/new account/crypto).",
+    "payment_terms_note_conflict": "Payment notes conflict with stated terms and need verification.",
+    "manual_review_override": "Final decision was changed by a manual reviewer override.",
+}
+
 
 def parse_args() -> argparse.Namespace:
     default_db_path = os.getenv("INVENTORY_DB_PATH", "inventory.db")
@@ -94,6 +106,37 @@ def _print_final_summary(summary: Dict[str, Any]) -> None:
     )
 
 
+def _print_flag_details(result: Dict[str, Any]) -> None:
+    approval = result.get("approval_result") or {}
+    issues = result.get("issues") or []
+    policy_flags = list(approval.get("policy_flags") or [])
+
+    print("\n=== Flags and Reasons ===")
+    if not policy_flags and not issues:
+        print("No flags were raised. Invoice passed deterministic checks and policy gates.")
+        return
+
+    if policy_flags:
+        print("Policy flags:")
+        for flag in policy_flags:
+            explanation = POLICY_FLAG_EXPLANATIONS.get(flag, "Policy escalation flag from approval logic.")
+            print(f"- {flag}: {explanation}")
+
+    if issues:
+        print("Validation / processing issues:")
+        for issue in issues:
+            severity = str(issue.get("severity") or "unknown").upper()
+            stage = str(issue.get("stage") or "unknown")
+            code = str(issue.get("code") or "UNKNOWN_ISSUE")
+            message = str(issue.get("message") or "").strip()
+            print(f"- [{severity}] {code} (stage={stage}): {message}")
+            details = issue.get("details") or {}
+            candidates = details.get("candidates")
+            if isinstance(candidates, list) and candidates:
+                pretty = ", ".join(str(c) for c in candidates)
+                print(f"  Suggested matches: {pretty}")
+
+
 def main() -> None:
     if load_dotenv is not None:
         load_dotenv()
@@ -117,6 +160,7 @@ def main() -> None:
         raise SystemExit(f"Pipeline failed: {exc}")
     summary = pretty_result(result)
     _print_final_summary(summary)
+    _print_flag_details(result)
 
 
 if __name__ == "__main__":
