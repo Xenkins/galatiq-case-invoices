@@ -83,7 +83,10 @@ Return this schema exactly:
   "invoice_id": "<string or empty>",
   "vendor": "<string or empty>",
   "date": "<YYYY-MM-DD or empty>",
-  "due_date": "<YYYY-MM-DD or empty>",
+  "due_date": "<YYYY-MM-DD, relative text, or empty>",
+  "due_date_raw": "<raw due date text or empty>",
+  "payment_terms": "<string or empty>",
+  "notes": "<string or empty>",
   "amount": <number or null>,
   "items": [
     {{

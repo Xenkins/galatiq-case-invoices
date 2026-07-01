@@ -48,6 +48,11 @@ def _parse_date(value: Optional[str]) -> Optional[str]:
     raw = value.strip().replace("2O", "20")
     formats = [
         "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%m-%d-%Y",
+        "%Y/%m/%d",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
         "%d-%b-%Y",
         "%b %d %Y",
         "%B %d, %Y",
@@ -99,6 +104,10 @@ def _build_invoice(
     amount: Optional[float],
     items: List[InvoiceItem],
     raw_text: str,
+    *,
+    due_date_raw: Optional[str] = None,
+    payment_terms: Optional[str] = None,
+    notes: Optional[str] = None,
 ) -> InvoiceData:
     return InvoiceData(
         invoice_id=invoice_id or source_path.stem.upper(),
@@ -106,11 +115,25 @@ def _build_invoice(
         date=date,
         due_date=due_date,
         amount=amount,
+        due_date_raw=due_date_raw.strip() if isinstance(due_date_raw, str) else due_date_raw,
+        payment_terms=payment_terms.strip() if isinstance(payment_terms, str) else payment_terms,
+        notes=notes.strip() if isinstance(notes, str) else notes,
         items=items,
         source_path=str(source_path),
         source_type=source_path.suffix.replace(".", "").lower(),
         raw_text=raw_text,
     )
+
+
+def _extract_terms_and_notes(text: str) -> Tuple[Optional[str], Optional[str]]:
+    payment_terms_match = re.search(
+        r"(?im)^\s*(?:Payment\s*Terms|Pymnt\s*Terms|Terms)\s*[:\-]\s*(.+)$",
+        text,
+    )
+    notes_match = re.search(r"(?im)^\s*Notes?\s*[:\-]\s*(.+)$", text)
+    payment_terms = payment_terms_match.group(1).strip() if payment_terms_match else None
+    notes = notes_match.group(1).strip() if notes_match else None
+    return payment_terms, notes
 
 
 def _parse_txt(path: Path) -> InvoiceData:
@@ -142,6 +165,7 @@ def _parse_txt_content(path: Path, text: str) -> InvoiceData:
 
     date_match = re.search(r"(?:Date|Dt)\s*[:\-]?\s*([^\n]+)", whole, re.IGNORECASE)
     due_match = re.search(r"(?:Due\s*Date|Due\s*Dt|DUE)\s*[:\-]?\s*([^\n]+)", whole, re.IGNORECASE)
+    due_raw = due_match.group(1).strip() if due_match else None
     amount_matches = re.findall(
         r"(?im)^\s*(?!SUBTOTAL)(?:TOTAL(?:\s*AMOUNT)?|AMT)\s*[:\-]?\s*\$?([0-9,.\-O]+)\s*$",
         whole,
@@ -182,15 +206,19 @@ def _parse_txt_content(path: Path, text: str) -> InvoiceData:
                 )
             )
 
+    payment_terms, notes = _extract_terms_and_notes(whole)
     return _build_invoice(
         source_path=path,
         invoice_id=invoice_id,
         vendor=vendor,
         date=_parse_date(date_match.group(1).strip()) if date_match else None,
-        due_date=_parse_date(due_match.group(1).strip()) if due_match else None,
+        due_date=_parse_date(due_raw) if due_raw else None,
         amount=_safe_float(amount_value),
         items=items,
         raw_text=text,
+        due_date_raw=due_raw,
+        payment_terms=payment_terms,
+        notes=notes,
     )
 
 
@@ -263,6 +291,11 @@ def _parse_json(path: Path) -> InvoiceData:
         amount=_safe_float(str(data.get("total"))) or _safe_float(str(data.get("amount"))),
         items=items,
         raw_text=raw,
+        due_date_raw=str(data.get("due_date")).strip() if data.get("due_date") is not None else None,
+        payment_terms=str(data.get("payment_terms")).strip()
+        if data.get("payment_terms") is not None
+        else None,
+        notes=str(data.get("notes")).strip() if data.get("notes") is not None else None,
     )
 
 
@@ -303,6 +336,8 @@ def _parse_csv(path: Path) -> InvoiceData:
             amount=_safe_float((key_values.get("total") or [None])[0]),
             items=items,
             raw_text=raw,
+            due_date_raw=(key_values.get("due_date") or [None])[0],
+            payment_terms=(key_values.get("payment_terms") or [None])[0],
         )
 
     # Format B: tabular rows with repeated invoice fields.
@@ -310,7 +345,9 @@ def _parse_csv(path: Path) -> InvoiceData:
     vendor = ""
     date = None
     due_date = None
+    due_date_raw = None
     amount = None
+    payment_terms = None
     for row in rows:
         inv = (row.get("Invoice Number") or "").strip()
         if inv and not invoice_id:
@@ -323,7 +360,12 @@ def _parse_csv(path: Path) -> InvoiceData:
             date = _parse_date(row_date)
         row_due = (row.get("Due Date") or "").strip()
         if row_due and not due_date:
+            due_date_raw = row_due
             due_date = _parse_date(row_due)
+        if payment_terms is None:
+            maybe_terms = (row.get("Payment Terms") or row.get("Terms") or "").strip()
+            if maybe_terms:
+                payment_terms = maybe_terms
         raw_item = (row.get("Item") or "").strip()
         qty = _safe_int(row.get("Qty"))
         unit = _safe_float(row.get("Unit Price"))
@@ -354,6 +396,8 @@ def _parse_csv(path: Path) -> InvoiceData:
         amount=amount,
         items=items,
         raw_text=raw,
+        due_date_raw=due_date_raw,
+        payment_terms=payment_terms,
     )
 
 
@@ -388,6 +432,8 @@ def _parse_xml(path: Path) -> InvoiceData:
         amount=_safe_float(totals.findtext("total") if totals is not None else None),
         items=items,
         raw_text=raw,
+        due_date_raw=(header.findtext("due_date") if header is not None else None),
+        payment_terms=(root.findtext("payment_terms") or None),
     )
 
 

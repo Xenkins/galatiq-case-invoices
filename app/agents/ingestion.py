@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -39,9 +40,19 @@ def _apply_llm_extraction(invoice, llm_payload: Dict[str, Any]) -> None:
     if date and not invoice.date:
         invoice.date = date
 
-    due_date = str(llm_payload.get("due_date") or "").strip()
-    if due_date and not invoice.due_date:
-        invoice.due_date = due_date
+    due_date_raw = str(llm_payload.get("due_date_raw") or llm_payload.get("due_date") or "").strip()
+    if due_date_raw and not invoice.due_date_raw:
+        invoice.due_date_raw = due_date_raw
+    if due_date_raw and not invoice.due_date and re.match(r"^\d{4}-\d{2}-\d{2}$", due_date_raw):
+        invoice.due_date = due_date_raw
+
+    payment_terms = str(llm_payload.get("payment_terms") or "").strip()
+    if payment_terms and not invoice.payment_terms:
+        invoice.payment_terms = payment_terms
+
+    notes = str(llm_payload.get("notes") or "").strip()
+    if notes and not invoice.notes:
+        invoice.notes = notes
 
     amount = _safe_float(llm_payload.get("amount"))
     if amount is not None and invoice.amount is None:

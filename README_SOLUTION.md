@@ -1,215 +1,231 @@
-# Galatiq Invoice Automation (Take-Home Solution)
+# Galatiq FDE Take-Home: Invoice Agentic Orchestration Solution
 
-End-to-end, multi-agent invoice processing pipeline for Acme Corp using LangGraph and Grok-style reasoning.
+This submission is a runnable, end-to-end invoice operations MVP with agentic orchestration and product-level usability.
 
-## Problem
-
-Acme Corp processes invoices manually and is losing money due to errors, delays, and inconsistent approvals. The goal is to automate invoice handling safely across four stages:
+It processes invoices through:
 
 1. Ingestion
 2. Validation
 3. Approval
 4. Payment
 
-This project focuses on both speed and controls: maximize straight-through processing for clean invoices while routing uncertain or risky cases to a human reviewer.
+Design goal: combine Grok-powered reasoning with deterministic controls so decisions are reliable, explainable, and reviewable.
 
-## Solution Overview
+## Quick Start for Reviewers
 
-The system is implemented as a LangGraph workflow with one worker agent per stage plus bounded reflection loops.
+### 1) Create and activate virtual environment
 
-- `Ingestion Agent` parses multi-format invoices (`pdf`, `txt`, `csv`, `json`, `xml`) into one normalized schema.
-- `Validation Agent` reconciles extracted items against local SQLite inventory.
-- `Approval Agent` applies deterministic policy rules and risk checks.
-- `Payment Agent` executes mock payment only for approved invoices.
-- `Reflection Gates` critique each stage output and allow at most one retry.
-- `Final Supervisor` performs cross-stage consistency checks and emits audit-ready output.
+From repo root:
 
-## Why This Architecture
-
-- Prevents upstream extraction errors from silently propagating.
-- Keeps deterministic business controls as decision authority.
-- Uses LLM reasoning where it adds value (unstructured parsing, critique, rationale).
-- Produces explainable outcomes with machine-readable logs.
-
-## Safety and Decision Policy
-
-The system classifies outcomes into three decisions:
-
-- `AUTO_APPROVE`: all checks pass, high confidence, no policy escalations.
-- `HUMAN_REVIEW`: ambiguity or risk (fuzzy candidate match, conflicting fields, low confidence, high-value threshold).
-- `REJECT`: critical validation failures (unknown item with no acceptable mapping, negative quantity, policy violation).
-
-### Fuzzy Matching Policy
-
-Fuzzy matching is suggestion-only.
-
-- If no exact DB match exists, the validator may return `candidate_matches` with confidence scores.
-- The system does **not** auto-remap ambiguous item/vendor keys.
-- Any uncertain match requires manual approval before continuing.
-
-## Agent and Tool Responsibilities
-
-### 1) Ingestion Agent
-
-Input: invoice file path  
-Output: normalized `InvoiceData`
-
-Tools:
-- file readers by type (`pdf`, `txt`, `csv`, `json`, `xml`)
-- schema normalizer
-- optional LLM extraction for messy text/OCR artifacts
-
-Reflection checks:
-- required fields present
-- valid data types and parsable dates
-- line-item and total consistency
-
-### 2) Validation Agent
-
-Input: `InvoiceData`  
-Output: structured validation report
-
-Tools:
-- SQLite inventory queries
-- deterministic business rule checks
-- optional fuzzy candidate generation
-
-Checks:
-- unknown items
-- quantity <= 0
-- quantity exceeds stock
-- suspicious or zero-stock items
-
-### 3) Approval Agent
-
-Input: invoice + validation report  
-Output: decision (`approve`, `review`, `reject`) + rationale
-
-Tools:
-- policy engine (ex: invoices above $10k require elevated scrutiny)
-- risk scoring helper
-
-Reflection checks:
-- policy compliance
-- consistency with validation severity
-- complete, auditable explanation
-
-### 4) Payment Agent
-
-Input: approved decision  
-Output: payment result
-
-Tools:
-- mock payment function
-- transaction logger
-
-Guardrails:
-- never execute if decision is `review` or `reject`
-- always log attempted and completed payment states
-
-### 5) Final Supervisor
-
-Cross-stage audit checks:
-- no payment occurred for rejected/reviewed invoices
-- approved invoices include payment result
-- rationale and issues are present and coherent
-
-## Data Contract (Normalized)
-
-Each invoice is normalized to a single schema before validation:
-
-```json
-{
-  "invoice_id": "INV-1012",
-  "vendor": "QuickShip Distributers",
-  "due_date": "2026-02-25",
-  "amount": 9975.0,
-  "items": [
-    {"item": "WidgetA", "quantity": 12, "unit_price": 250.0, "line_total": 3000.0}
-  ],
-  "source_path": "data/invoices/invoice_1012.pdf",
-  "source_type": "pdf"
-}
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## Runtime and Stack
-
-- Python 3.11+
-- LangGraph (or LangChain graph primitives)
-- SQLite for local validation store
-- `pdfplumber` and/or `PyMuPDF` for PDF extraction
-- Optional: Grok via xAI API (fallback model allowed)
-- Local-only execution; no external business dependencies required
-
-## Input Dataset
-
-Sample invoices are in `data/invoices/` across multiple formats. They include both clean and problematic cases for validation and decision testing.
-
-Optional utility:
-- `data/generate_pdfs.py` generates representative PDF invoices for additional parser testing.
-
-## CLI Contract
-
-Environment setup (recommended):
+### 2) Configure `.env` from template
 
 ```bash
 cp .env.example .env
-# then edit .env and set GROK_API_KEY
 ```
 
-Note: this implementation requires Grok + LangGraph on every run. If Grok is unavailable, the pipeline exits with an error.
+Set:
 
-Example entrypoint:
+```bash
+GROK_API_KEY=your_grok_api_key_here
+GROK_MODEL=grok-3
+```
+
+### 3) Run via CLI
 
 ```bash
 python main.py --invoice_path=data/invoices/invoice_1001.txt
 ```
 
-Grok-enabled run:
+No extra flags are required for normal execution. `inventory.db` is created/seeded automatically.
+
+### 4) Run practical UI locally (runnable MVP)
+
+Use two terminals from repo root.
+
+Terminal 1 (backend):
 
 ```bash
-export GROK_API_KEY="your_key"
-python main.py --invoice_path=data/invoices/invoice_1001.txt --grok_model=grok-3
-```
-
-Expected output:
-- structured stage logs
-- final decision (`approved_paid`, `human_review`, `rejected`)
-- machine-readable issue list
-- audit trace for each stage and reflection pass
-
-## React UI (Live Orchestration View)
-
-The project includes a React UI that visualizes stage-by-stage orchestration events from the LangGraph run.
-
-Optional UI mode (for orchestration visualization):
-
-Run backend API:
-
-```bash
+source .venv/bin/activate
 uvicorn app.api_server:app --reload --port 8000
 ```
 
-In another terminal, run React:
+Terminal 2 (frontend):
 
 ```bash
+source .venv/bin/activate
 cd ui
 npm install
 npm run dev
 ```
 
-Open `http://127.0.0.1:5173`, choose an invoice, and run. The timeline updates as each stage logs events.
+Open `http://localhost:5173`.
 
-## Implementation Roadmap
+The UI is intentionally built as an operations-facing MVP workbench (not just a debug panel):
 
-See `IMPLEMENTATION_PLAN.md` for phased delivery, milestones, and test strategy.
+- upload/select invoice
+- run full pipeline
+- track stage timeline
+- inspect extracted fields and inventory checks
+- review plain-English rationale and flags
+- apply manual override (`approve_and_pay` / `reject`) when needed
 
-## Evaluation Alignment
+## Architecture Overview
 
-This design is optimized for the case rubric:
+LangGraph pipeline in `app/graph/builder.py`:
 
-- Functionality: true end-to-end flow
-- Code quality: typed contracts, deterministic checks, error handling
-- Agentic sophistication: multi-agent orchestration + reflection
-- Shipping mindset: bounded retries, clear MVP scope
-- Presentation: business-first explanation with auditability
+- `ingestion_agent` -> `ingest_reflection`
+- `validation_agent` -> `validation_reflection`
+- `approval_agent` -> `approval_reflection`
+- `payment_agent` -> `supervisor_agent`
+
+All stages share `PipelineState` and append to `audit_log` for full run traceability.
+
+## Deterministic-First Decisioning (LLM-Assisted, Not LLM-Only)
+
+A key design choice is that the LLM does not unilaterally decide outcomes.
+
+Decision flow:
+
+1. Parse and normalize invoice data (file parsers + Grok-assisted extraction).
+2. Run deterministic validation methods and tools:
+   - SQLite inventory lookup
+   - quantity and stock checks
+   - totals reconciliation
+   - due-date / payment-terms consistency checks
+   - fuzzy candidate matching (`difflib.SequenceMatcher`) when exact item match is absent
+3. Apply deterministic approval rules (`app/policies/approval_rules.py`).
+4. Use Grok for rationale and reflection critique to improve explainability and quality.
+
+This keeps business control logic stable and testable while still leveraging LLM strengths where they matter.
+
+## Agent Responsibilities
+
+### Ingestion (`app/agents/ingestion.py`)
+
+- Parses `txt`, `json`, `csv`, `xml`, `pdf` into one canonical schema.
+- Uses Grok extraction to improve handling of noisy/OCR-like inputs.
+
+### Validation (`app/agents/validation.py`)
+
+- Validates against local SQLite inventory (`inventory.db`).
+- Checks quantity integrity, item existence, stock sufficiency, totals, and date/terms coherence.
+- Emits structured `Issue` objects (`code`, `severity`, `stage`, `message`, `details`) so each flag is machine-readable and consistently rendered in policy logic and the UI.
+- Keeps pass/fail and escalation decisions deterministic; Grok is used around this stage for reflection/critique quality checks, not as the primary rule engine.
+
+### Approval (`app/agents/approval.py`)
+
+- Applies deterministic policy mapping.
+- Adds risk context (urgency language, non-standard payment instructions).
+- Uses Grok to generate concise, auditable rationale text.
+
+### Payment (`app/agents/payment.py`)
+
+- Executes mock payment only if decision is `APPROVE`.
+- Marks payment as `skipped` for `HUMAN_REVIEW`/`REJECT`.
+
+### Supervisor (`app/agents/supervisor.py`)
+
+- Runs end-state consistency checks.
+- Assigns final status: `APPROVED_PAID`, `HUMAN_REVIEW_REQUIRED`, `REJECTED`, or `FAILED`.
+
+## Reflection Loops (Bounded Self-Correction)
+
+Reflection stages:
+
+- `app/reflection/ingestion_reflect.py`
+- `app/reflection/validation_reflect.py`
+- `app/reflection/approval_reflect.py`
+
+Each stage can request at most one retry, improving quality without unbounded loops.
+
+## Decision Buckets and Plain-English Flag Meanings
+
+UI policy guide lives in `ui/src/App.jsx`.
+
+### 1) Reject Bucket (Critical)
+
+Automatic rejection when critical integrity risk is detected.
+
+- **Out of stock (`VAL_OUT_OF_STOCK`)**: requested item has zero available inventory.
+- **Invalid quantity (`VAL_INVALID_QUANTITY`)**: quantity is invalid for fulfillment (for example, negative).
+
+### 2) Human Review Bucket (Error / Warning / Uncertainty)
+
+Manual decision required when evidence is inconsistent or risky.
+
+- **Stock mismatch (`VAL_STOCK_MISMATCH`)**: request exceeds available stock.
+- **Unknown item (`VAL_UNKNOWN_ITEM`)**: item not found in inventory.
+- **Ambiguous item match (`VAL_AMBIGUOUS_ITEM_MATCH`)**: close fuzzy match found, but no safe auto-mapping.
+- **Relative due date (`VAL_DUE_DATE_RELATIVE_LANGUAGE`)**: due date is non-deterministic wording like "ASAP".
+- **Terms/date mismatch (`VAL_TERMS_DUE_MISMATCH`)**: due date conflicts with payment terms.
+- **Uncertainty escalation (`uncertainty_requires_review`)**: a policy-level escalation used when data is not clearly wrong but not reliable enough for straight-through approval (for example ambiguous fuzzy item candidates, inconsistent totals, or date/terms ambiguity).
+- **High-value escalation (`vp_threshold_exceeded`)**: amount crosses configured review threshold.
+- **Urgency pressure language (`payment_pressure_language_detected`)**: coercive urgency detected in notes/terms.
+- **Non-standard payment instructions (`nonstandard_payment_instruction`)**: risky payment pattern detected.
+
+### 3) Auto-Approve Bucket
+
+Automatic approval only when all are true:
+
+- no critical/error escalations
+- validation passes cleanly
+- no blocking policy flags
+
+Then payment executes and final status is `APPROVED_PAID`.
+
+## Reviewer Checklist
+
+For each run, check:
+
+- stage timeline progression
+- final status and payment status
+- issue count and highest severity
+- policy flags and approval rationale
+- source preview and normalized extraction output
+
+This makes each decision auditable from both engineering and business perspectives.
+
+## Testing
+
+```bash
+pytest -q
+```
+
+Coverage includes integration flow behavior and key validation edge cases (date parsing, due-date policy consistency, invalid quantities).
+
+## Risks and Tradeoffs
+
+- Deterministic controls reduce false auto-pay risk.
+- Conservative policy intentionally increases manual review on borderline cases.
+- Bounded reflection retries improve quality while controlling runtime complexity.
+
+## Improvements and Expansion Path
+
+### Improve Current Functionality
+
+- **Adaptive fuzzy matching thresholds:** tune thresholds by vendor/item family and add confidence calibration from historical reviewer outcomes.
+- **Learning from human overrides:** persist manual-review decisions and use them to improve future auto-mapping and policy tuning.
+- **Richer validation coverage:** add unit price tolerance checks, duplicate invoice detection, vendor allowlists/blocklists, and tax/subtotal integrity checks.
+- **Stronger document resilience:** improve OCR handling and table extraction for low-quality PDFs, including confidence scoring per extracted field.
+- **Explainability quality:** provide field-level evidence links (which lines in source led to each issue/flag) in both API responses and UI.
+
+### Evolve Into a Shippable Product
+
+- **Identity, roles, and approval workflow:** add authn/authz, reviewer queues, SLA tracking, and role-based manual override permissions.
+- **Persistent system of record:** move run state/audit logs from in-memory runtime state to durable storage with replayable run history.
+- **Operational reliability:** add retry/backoff policies, job queueing, idempotency keys, and dead-letter handling for failed runs.
+- **Observability and governance:** add structured metrics, tracing, alerting, model cost tracking, and policy-change audit trails.
+- **Deployment hardening:** containerization, CI/CD gates, secret management, environment promotion (dev/stage/prod), and backup/restore procedures.
+
+## Final Summary
+
+This project is positioned as:
+
+- a technically strong multi-agent orchestration system, and
+- a practical MVP product experience (CLI + UI) that a reviewer can run quickly and assess end-to-end.

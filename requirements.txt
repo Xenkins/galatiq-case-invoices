@@ -6,3 +6,5 @@ xai-sdk
 python-dotenv
 fastapi
 uvicorn
+python-multipart
+fpdf2

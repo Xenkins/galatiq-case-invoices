@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from datetime import date, timedelta
+import re
 from typing import Dict, List
 
 from app.schemas.models import (
@@ -15,6 +17,42 @@ from app.schemas.models import (
 from app.tools.db import fetch_inventory
 from app.tools.fuzzy_match import rank_candidates
 from app.tools.file_parsers import normalize_item_name
+
+
+RELATIVE_DUE_LANGUAGE = {
+    "yesterday",
+    "today",
+    "tomorrow",
+    "immediate",
+    "immediately",
+    "asap",
+    "upon receipt",
+    "next week",
+    "next month",
+}
+
+
+def _is_relative_due_date(text: str) -> bool:
+    lowered = text.lower()
+    return any(token in lowered for token in RELATIVE_DUE_LANGUAGE)
+
+
+def _parse_iso_date(value: str | None) -> date | None:
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
+
+
+def _extract_net_days(payment_terms: str | None) -> int | None:
+    if not payment_terms:
+        return None
+    match = re.search(r"net\s*(\d{1,3})", payment_terms, re.IGNORECASE)
+    if not match:
+        return None
+    return int(match.group(1))
 
 
 def validation_agent(state: PipelineState, db_path: str, fuzzy_threshold: float = 0.85) -> PipelineState:
@@ -143,6 +181,93 @@ def validation_agent(state: PipelineState, db_path: str, fuzzy_threshold: float 
                 details=totals_check,
             )
         )
+
+    due_raw = (invoice.due_date_raw or "").strip()
+    if due_raw:
+        if _is_relative_due_date(due_raw):
+            requires_human_review = True
+            state.add_issue(
+                Issue(
+                    code="VAL_DUE_DATE_RELATIVE_LANGUAGE",
+                    severity=SEVERITY_WARNING,
+                    message=f"Due date uses relative language ({due_raw!r}) and requires manual interpretation.",
+                    field="due_date",
+                    stage="validation",
+                )
+            )
+        elif invoice.due_date is None:
+            requires_human_review = True
+            state.add_issue(
+                Issue(
+                    code="VAL_DUE_DATE_UNPARSABLE",
+                    severity=SEVERITY_WARNING,
+                    message=f"Due date value ({due_raw!r}) could not be normalized.",
+                    field="due_date",
+                    stage="validation",
+                )
+            )
+
+    invoice_date = _parse_iso_date(invoice.date)
+    due_date = _parse_iso_date(invoice.due_date)
+    if invoice_date and due_date and due_date < invoice_date:
+        requires_human_review = True
+        state.add_issue(
+            Issue(
+                code="VAL_DUE_BEFORE_INVOICE_DATE",
+                severity=SEVERITY_ERROR,
+                message=f"Due date {due_date.isoformat()} is before invoice date {invoice_date.isoformat()}.",
+                field="due_date",
+                stage="validation",
+            )
+        )
+
+    payment_terms = (invoice.payment_terms or "").strip()
+    net_days = _extract_net_days(payment_terms)
+    if net_days is not None:
+        if invoice_date and due_date:
+            expected_due = invoice_date + timedelta(days=net_days)
+            if abs((due_date - expected_due).days) > 2:
+                requires_human_review = True
+                state.add_issue(
+                    Issue(
+                        code="VAL_TERMS_DUE_MISMATCH",
+                        severity=SEVERITY_WARNING,
+                        message=(
+                            f"Payment terms {payment_terms!r} imply due date near {expected_due.isoformat()}, "
+                            f"but invoice states {due_date.isoformat()}."
+                        ),
+                        field="payment_terms",
+                        stage="validation",
+                    )
+                )
+        elif invoice_date and not due_date:
+            requires_human_review = True
+            state.add_issue(
+                Issue(
+                    code="VAL_TERMS_WITHOUT_PARSEABLE_DUE_DATE",
+                    severity=SEVERITY_WARNING,
+                    message=f"Payment terms {payment_terms!r} present but due date is missing/unparseable.",
+                    field="payment_terms",
+                    stage="validation",
+                )
+            )
+
+    immediate_terms = {"immediate", "due on receipt", "upon receipt", "cod"}
+    if payment_terms and any(term in payment_terms.lower() for term in immediate_terms):
+        if invoice_date and due_date and (due_date - invoice_date).days > 1:
+            requires_human_review = True
+            state.add_issue(
+                Issue(
+                    code="VAL_IMMEDIATE_TERMS_INCONSISTENT_DUE_DATE",
+                    severity=SEVERITY_WARNING,
+                    message=(
+                        f"Payment terms {payment_terms!r} suggest immediate payment, "
+                        f"but due date is {due_date.isoformat()}."
+                    ),
+                    field="payment_terms",
+                    stage="validation",
+                )
+            )
 
     result = ValidationResult(
         validation_pass=validation_pass,

@@ -47,6 +47,9 @@ class InvoiceData:
     date: Optional[str]
     due_date: Optional[str]
     amount: Optional[float]
+    due_date_raw: Optional[str] = None
+    payment_terms: Optional[str] = None
+    notes: Optional[str] = None
     items: List[InvoiceItem] = dataclass_field(default_factory=list)
     source_path: str = ""
     source_type: str = ""
