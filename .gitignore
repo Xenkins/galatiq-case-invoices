@@ -1,0 +1,8 @@
+.cursor/
+__pycache__/
+*.pyc
+*.db
+.env
+.venv/
+ui/node_modules/
+ui/dist/

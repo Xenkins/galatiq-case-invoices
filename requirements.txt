@@ -1,0 +1,10 @@
+langgraph
+pdfplumber
+pypdf
+pytest
+xai-sdk
+python-dotenv
+fastapi
+uvicorn
+python-multipart
+fpdf2
